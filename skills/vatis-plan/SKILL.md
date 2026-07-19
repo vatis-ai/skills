@@ -1,6 +1,6 @@
 ---
 name: vatis-plan
-description: Use when turning this project's planning docs (MD files, a spec, a roadmap) into a Vatis plan — a typed promise network — and working it. Vatis is a planning substrate for coding agents: a plan is a network of promises with typed reliances, not a work queue. Trigger on "plan this with Vatis", "seed the plan", "turn the spec into a promise network", or when a Vatis MCP server (mcp__vatis__*) is connected.
+description: Use when turning this project's planning docs (MD files, a spec, a roadmap) into a Vatis plan — a typed promise network — and working it. Vatis is a planning substrate for coding agents, where a plan is a network of promises with typed reliances, not a work queue. Trigger on "plan this with Vatis", "seed the plan", "turn the spec into a promise network", or when a Vatis MCP server (mcp__vatis__*) is connected.
 ---
 
 # Working a project with Vatis
