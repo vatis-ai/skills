@@ -1,0 +1,186 @@
+---
+name: vatis-plan
+description: Use when turning this project's planning docs (MD files, a spec, a roadmap) into a Vatis plan — a typed promise network — and working it. Vatis is a planning substrate for coding agents: a plan is a network of promises with typed reliances, not a work queue. Trigger on "plan this with Vatis", "seed the plan", "turn the spec into a promise network", or when a Vatis MCP server (mcp__vatis__*) is connected.
+---
+
+# Working a project with Vatis
+
+Vatis models a plan as a **promise network**: each node makes a **promise** (a shape, an artifact, or a
+finding) and edges are **reliances** on those promises. Its value is *when* you settle — publishing a
+shape releases everyone who only needed the shape, long before the code exists — plus surgical
+invalidation when something breaks. You interact through ~13 MCP tools (`mcp__vatis__*`).
+
+⚠️ **Honest status (read this):** Vatis is deployed but has **not been driven live end-to-end**. Treat it
+as dogfood, not production. Two facts that shape everything you do:
+- **A write-set can only GROW, and only into free ground.** If a node under-declares, its holder can
+  `widen` it to add uncontended files as it discovers them — but you can never remove a path or take one
+  another live lease holds. So declare what you know and widen as you learn; don't try to predict the whole
+  footprint up front.
+- **The guard fails OPEN.** If Vatis is unreachable or misconfigured, writes proceed unrefused. Never
+  assume the wall is protecting you without checking.
+
+Start **planning-only with the guard OFF** (below). Get the structural value — the network, the frontier,
+the bets — with zero enforcement risk. Arm the guard later, on a small slice, once it's trusted.
+
+---
+
+## 0. Prerequisites — connect, then create the plan yourself
+
+You connect in **one click** and create plans yourself (see the `vatis-setup` skill for wiring):
+- `.mcp.json` points at `https://api.vatis.dev/mcp?repo=<url-encoded git remote>` — so this repo gets its
+  own dedicated project (one repo, one project). On first use, Claude Code opens an OAuth flow; the human
+  clicks **one** magic-link to approve (a real page, not JSON). Vatis makes or finds this repo's project.
+  If you can see `mcp__vatis__create_plan` in your tools, you're a **planner** on it.
+- **Make the plan:** `mcp__vatis__create_plan({ goal })` → returns a `pl_…` id. This is your plan; you did
+  not need a projectId, a pasted token, or any REST.
+- ⚠️ **On this connection every plan-operating tool takes a `planId` argument** — pass the id you just
+  created to `seed`, `frontier`, `claim`, etc. (A dispatched executor instead gets a plan-scoped
+  connection, `.../mcp/plan/<planId>`, where `planId` is implicit — it works exactly one plan.)
+
+---
+
+## 1. Encode the planning docs into a promise network (the core skill)
+
+Read every planning MD/spec file first. Then translate prose into nodes. This is the hard part and where
+the value is — do it deliberately.
+
+**A NODE is one unit of work = one agent = one context = one verification = one merge.** Size it to *what
+must be held in one head at once*, not to a file count. A node needs:
+
+| field | what to put | rule |
+|---|---|---|
+| `id` | short kebab id | unique; can never be re-used |
+| `intent` | what this node is for, cold-startable | a stranger must be able to execute from this alone |
+| `writes` | the files this node will **modify** | the *only* field that drives contention. It can **grow** later (the holder `widen`s it with uncontended files it discovers), but never shrink — so under-declaring is recoverable, over-declaring is not. When unsure, list the file. A trailing `/` makes an entry a **directory** covering everything beneath it (`apps/router/`) — but it serialises everyone who touches anything inside, so prefer listing files; use a directory only when the node genuinely rewrites the whole subtree. |
+| `reads` | files it depends on but will **not** change | free, blocks nobody |
+| `verification` | the command that must exit 0 to prove it done | **required** — null means it can never be fulfilled. Make it real (a test/build), not `node --check`. |
+| `reliances` | what this node needs from others (see below) | the edges of the network |
+| `adjudicator` | `"reviewer"` (a manager agent OR a person may clear it — "does the work meet the contract?") or `"human"` (a **person only**) for a DECISION rather than a task | Use `reviewer` for the bulk (conformance sign-offs). Use `human` only when it needs a real person: taste, an irreversible/costly call, or a fact only someone can vouch for (money spent, entitlement on) — a manager is refused those. Either way an executing agent can't clear it. |
+
+**A RELIANCE** is `{ on: "<other-node-id>", kind: "contract" | "artifact" | "finding", clauses?: [...] }`:
+- **`contract`** — you need the *shape decided* (signature/schema/route). Released the moment that node
+  *settles*, while its code is still vapour. Name the `clauses` you actually need (e.g. `["verify"]`) so a
+  change elsewhere doesn't recall you needlessly; omit clauses only if you truly need the whole shape.
+- **`artifact`** — you need it *built and proven*, not just shaped. Released when it's fulfilled.
+- **`finding`** — you need to have *read what it learned* (a decision, a measurement). This is how a
+  human decision blocks work: give the blocked node a `finding` reliance on the decision node.
+
+**BETS** are separate (`mcp__vatis__bet`, planner-only): a load-bearing assumption nobody has verified —
+`{ id, belief, falsifier, cost }`. No confidence number. Anything you're *gambling* on ("the API isn't
+paginated", "the lib supports streaming") is a bet; declare it so a human sees what the plan rests on.
+Anything downstream of an unresolved high-blast bet is **fiction** — put an unfolding there instead.
+
+**THE HORIZON.** Don't invent nodes for work whose shape you can't know yet. Plan honestly to where you
+stop knowing, and leave the rest for an `unfold` later.
+
+**Encoding gotchas (verified against the code):**
+- You **cannot supply contract clauses at seed** — the server forces `contract: {}`. Shapes are published
+  later, per node, via `settle`. At seed you only *declare that a node owes a contract* (via others'
+  `contract` reliances on it); the clauses come when its owner settles.
+- Seed refuses a defective plan (all measured at 0 false-positives): `CYCLE` (a reliance loop),
+  `EMPTY_WRITE_SET` (a work node that writes nothing — exempt only for decisions and re-planning nodes),
+  `DANGLING_RELIANCE` (relies on an id not in the plan), `UNPUBLISHABLE_CLAUSE`. Fix these before seeding.
+
+**Then seed it** (planner): `mcp__vatis__seed({ planId, goal, nodes: [...] })` — one call installs the
+network into the plan you created. To add bets, call `mcp__vatis__bet({ planId, ... })` per bet after.
+(On a plan-scoped executor connection, omit `planId` — it's implicit.)
+
+**`seed` APPENDS — this is how you add the next milestone.** Plan honestly to your horizon, seed it, work
+it; when it's done, `seed` again with the *next* stretch. New nodes may rely on already-finished ones
+(`{ on: "<installed-node-id>", kind: "artifact" }` and the like) — reliances are validated against the
+whole plan, not just this batch. Two rules: **use fresh ids** (re-seeding an existing id is refused — seed
+only adds, it never overwrites installed work; to change an installed node use `amend_intent`/`widen`/an
+`unfold`), and the milestone's own internal structure must be sound (no cycle, no dangling edge onto an id
+in neither the batch nor the plan). This is the milestone-by-milestone rhythm: `create_plan` once, then a
+`seed` per milestone.
+
+Before seeding, show the human the node list and the bets and get a nod — a wrong write-set is expensive
+to correct.
+
+---
+
+## 2. Guard — leave it OFF to start
+
+Vatis enforces walls at the point of action via two Claude Code hooks. **For a first pass, do not install
+them.** You get all the planning value (frontier, brief, settle, bets, surgical recall bookkeeping)
+without the enforcement risk, and nothing can wrongly refuse a write.
+
+When you *do* want enforcement (later, on a small slice): call `mcp__vatis__guard_setup` (planner-only),
+which returns the exact files to write (`.vatis/guard.json`, three `.sh` hook scripts) and the
+`.claude/settings.json` hooks to merge. It needs `jq`, `curl`, `git` on PATH. To soften it: set
+`"shellWall": false` in `.vatis/guard.json` (quiets the shell-write refusal; recall still bites). To turn
+it fully off: remove the hooks. There is no log-only mode — a refusal is a blocked write or nothing.
+
+---
+
+## 3. Work the loop (executor)
+
+1. `mcp__vatis__frontier` — what's runnable now, and why the rest isn't.
+2. `mcp__vatis__claim(nodeId)` — take a lease; returns a `leaseId` (your permit for settle/attest/release).
+3. `mcp__vatis__brief(nodeId)` — everything to execute it: goal, the settled contracts you rely on, your
+   write-set, your verification, findings you inherit.
+4. `mcp__vatis__settle(leaseId, { clause: "<the signature/schema/route you promise>" })` — publish your
+   shape **the instant you've decided it**, before writing code. This releases everyone waiting on the
+   shape. Settling late throws the whole point away.
+5. Do the work. Run your `verification`.
+6. `mcp__vatis__attest(leaseId, evidence)` — submit `{ verification, command, exitCode: 0, commit, files,
+   summary }` + the material choices you made. The system adjudicates; you don't declare done. **Attest
+   each slice as you finish it, before merge** — `attest` is retroactive-hostile: the cited `commit`'s
+   files must sit inside your write-set, and once slices are merged together no single historical commit is
+   cleanly ⊆ your write-set. Preflight `git show --name-only <commit>` ⊆ your write-set first.
+
+**Never let your agent die holding a lease.** Before the session ends or is `/clear`ed, `attest` (done) or
+`release` (unfinished) — the clean exit. A lease left held auto-reclaims after **30 min** of silence (or a
+manager `revoke`s it sooner), but don't lean on that: it's a backstop, not a workflow.
+
+- `mcp__vatis__heartbeat(leaseId)` — proof you're still alive on a node during a long *silent* step (a slow
+  build, a big test run, a deep think). Every ordinary verb (`settle`/`widen`/`discover`/`amend_intent`)
+  already renews your lease, so while you're making progress you never need this; reach for it only when
+  real work happens with no Vatis call to show for it, and beat every few minutes. If it comes back refused,
+  your node was reclaimed while you were away — stop, and `claim` again (or ask `frontier` what's yours).
+
+When reality diverges:
+- `mcp__vatis__discover(...)` — report a fact; optionally break a contract clause / artifact / bet you've
+  *falsified* (with real evidence — a failing run of the declared verification).
+- `mcp__vatis__checkpoint(leaseId, summary)` — pause part-way for a human to review, **keeping your lease**.
+  Use this — NOT `split` — when a person wants to look before you continue: your node isn't mis-sized, you
+  just want eyes on it. Keeps the node yours and in progress, lands in the human's inbox, blocks nothing.
+- `mcp__vatis__amend_intent(leaseId, intent)` — correct your node's stale description (a planning decision
+  changed what it's for). Touches only the wording, never the write-set.
+- `mcp__vatis__widen(leaseId, paths)` — add files you've discovered you must write to your own write-set.
+  Additive and safe: refused (`WIDEN_CONTENDED`) if another live lease holds a path, and you still cite
+  every added file at `attest`. This is the answer to "I need to edit a file that's in my `reads`, not my
+  `writes`" — widen to it (if it's free) rather than re-plan. Add only files you're really about to write.
+- `mcp__vatis__split(leaseId, why)` — "this doesn't fit in one context." Drops your lease, raises a
+  re-planning node for a planner. Only for genuine mis-sizing — for a review checkpoint use `checkpoint`.
+- `mcp__vatis__release(leaseId)` — give up a lease unfinished; the node's state is untouched.
+- **Recalled?** If a discovery moves your ground, your next write is refused with `RECALLED`. Stop. Do not
+  work around it. Claim the repair node the discovery raised, or a node it invalidated — that's the door.
+
+Also in `brief`: `readOwners` — nodes that own a file you `read` and have decided something about it
+(settled a clause / reported a finding) that reaches you through no reliance edge. Go look before you build.
+
+Planner-only repair: `unfold` (install replacements + `retire` dead nodes), `bet`, `revoke`, `seed`. To
+**decompose a node that already settled a contract**, use `unfold(..., succeed:[{from, to}])` instead of
+`retire`: the heir `to` inherits the contract, reliers move to it, and `from` retires — so settling early
+never makes the repair harder. `frontier.answerable` flags a human gate an unheard finding already answers.
+
+Human-only (not yours): adjudicating a `human` decision node, and absorbing/acknowledging findings —
+those happen on a separate human surface a signed-in person reaches, which your token cannot.
+
+**Need to write a file that isn't in your write-set?** If it's free (no other live lease holds it),
+`widen` to it — that's the normal case, including a spec in your `reads` your verification proved wrong.
+Only when the file is genuinely CONTENDED, or the work needs a whole **new node**, does it leave your
+hands: an executor cannot add a node (that's a planner's `unfold`, which needs a re-planning node you don't
+hold — do NOT `split` to manufacture one). For those, **`discover` it as a finding** with evidence; a human
+`absorb`s it and a planner installs the node. Attest what you own now; `brief`'s `readOwners` carries your
+finding to whoever reads that file next.
+
+---
+
+## 4. When you're stuck
+
+`frontier` and `brief` explain themselves — they tell you *why* a node is or isn't runnable. The first
+question when something looks stuck is usually "why is X *not* on the frontier?" — read the frontier's
+derivation; it says. If a wall refuses you, the refusal text names the legal move. Follow it; don't route
+around it.

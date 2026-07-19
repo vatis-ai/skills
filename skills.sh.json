@@ -1,0 +1,11 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Vatis",
+      "description": "Plan and build with Vatis — a promise-network planning substrate for coding agents. Connect a repo in one click, turn docs into a typed promise network, work it, and review at gates.",
+      "skills": ["vatis-setup", "vatis-plan", "vatis-review", "vatis-feedback"]
+    }
+  ]
+}
