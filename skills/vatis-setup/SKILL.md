@@ -13,57 +13,49 @@ start planning-only. The guard fails **open**, and a node's write-set **cannot b
 
 ## The whole setup
 
-Point `.mcp.json` at `/mcp`, **naming this repo** so it gets its own dedicated project — one repo, one
-project, never sharing a contention space with another codebase:
+Point `.mcp.json` at the bare `/mcp` bootstrap URL. It connects you **org-scoped** — from there you list
+or create a project (nothing auto-provisions one, and no id is needed first):
 
 ```json
-{ "mcpServers": { "vatis": { "type": "http", "url": "https://api.vatis.dev/mcp?repo=<REMOTE>" } } }
+{ "mcpServers": { "vatis": { "type": "http", "url": "https://api.vatis.dev/mcp" } } }
 ```
 
-`<REMOTE>` is this repo's git remote, URL-encoded. Compute and write it in one step:
-
-```bash
-REMOTE=$(git remote get-url origin 2>/dev/null)
-# URL-encode REMOTE and set the .mcp.json url to  https://api.vatis.dev/mcp?repo=<encoded REMOTE>
-```
-
-Vatis **canonicalises** the remote server-side, so the `https://…` and `git@…` forms of the same repo
-resolve to the **same** project — reconnecting always lands you in the same place. No remote at all
-(throwaway/local work)? Use plain `https://api.vatis.dev/mcp` and you get a single generic personal
-project instead.
-
-You do **not** need a projectId first. On the first click Vatis makes (or finds) this repo's project and
-hands the agent a grant scoped to it. The agent can then create and work plans.
+On the first click Vatis hands the agent an org-scoped setup grant. Call `list_projects` to see the org's
+projects, or `create_project({ name })` to make one — deliberately named for this codebase (a project is
+one repo / one contention space). It returns a `prj_…` id. Then point `.mcp.json` at that project's URL
+(`https://api.vatis.dev/mcp/project/<prj_id>`) and reconnect to plan and work it.
 
 ## Steps
 
-**1. Write `.mcp.json`** at the repo root with the URL above — `repo=` set to your URL-encoded git remote
-(create or merge). No token, no headers — auth is OAuth, negotiated on first use.
+**1. Write `.mcp.json`** at the repo root with the bare bootstrap URL above (create or merge). No token,
+no headers — auth is OAuth, negotiated on first use.
 
 **2. Reconnect.** Ask the human to reload MCP servers (or restart Claude Code). An OAuth flow opens; the
 human clicks **one** magic-link email to confirm. That link lands on a real Vatis page (not JSON) and
-logs the agent in — the consent screen names the repo, so they can see what they're approving.
+logs the agent in.
 
-**3. Verify.** If you can see `mcp__vatis__create_plan` in your tools, you're connected as a planner on
-this repo's project. (If you don't see it, you connected as an executor — ask the human for planner.)
+**3. Pick or create a project.** Call `mcp__vatis__list_projects` to see the org's projects, or
+`mcp__vatis__create_project({ name })` to make one — named for this codebase. It returns a `prj_…` id.
 
-**4. Create a plan and plan it.** Call `mcp__vatis__create_plan({ goal })` → it returns a `pl_…` id.
-Then invoke the **vatis-plan** skill to encode the project's plan docs into the network and `seed` it.
-Every plan-operating tool on this connection takes a `planId` arg — pass the id you just created.
+**4. Reconnect to the project, then plan it.** Point `.mcp.json` at
+`https://api.vatis.dev/mcp/project/<prj_id>` and reload. You now hold a planner grant on that project:
+`mcp__vatis__create_plan({ goal })` returns a `pl_…` id. Then invoke the **vatis-plan** skill to encode
+the plan docs and `seed` it. Every plan-operating tool takes a `planId` arg — pass the id you created.
 
 **5. (Optional, later) Enforcement.** `mcp__vatis__guard_setup({ planId })` returns hook files that arm
 the walls at the point of action. Leave it off until trusted.
 
 ## The three roles — three different connections
 
-The `/mcp?repo=` bootstrap above is how you *start*. A real project run has up to three connection kinds,
-each a different token with different verbs. Pick the URL for the role:
+The bare `/mcp` bootstrap above is how you *start* (org-scoped: `list_projects`/`create_project`). A real
+project run has connection kinds, each a different token with different verbs. Pick the URL for the role:
 
 | Role | `.mcp.json` URL | Gets |
 |---|---|---|
-| **Bootstrap / planner** | `https://api.vatis.dev/mcp?repo=<REMOTE>` | finds-or-makes this repo's project; `create_plan` + authoring if planner-role |
+| **Bootstrap (org setup)** | `https://api.vatis.dev/mcp` | `list_projects`, `create_project` — no id needed; reconnect to the project after |
+| **Planner** (works a project) | `https://api.vatis.dev/mcp/project/<projectId>` | `create_plan` + authoring; works the project's plans |
 | **Executor** (a dispatched worktree working one plan) | `https://api.vatis.dev/mcp/plan/<planId>` | execution verbs; `planId` implicit |
-| **Manager** (reviews + approves, never codes) | `https://api.vatis.dev/mcp/manager/<projectId>/full` | `frontier`, `brief`, `create_plan`, `adjudicate`, `absorb`, `acknowledge` |
+| **Manager** (reviews + approves, never codes) | `https://api.vatis.dev/mcp/manager/<projectId>/full` | `frontier`, `brief`, `create_project`, `create_plan`, `adjudicate`, `absorb`, `acknowledge` |
 
 - **Manager `/full`** is the owner's opt-in to clear `human` gates too. ⚠️ **`/full` MUST be a path
   segment, never `?full`** — an MCP client authorizes against the path-only resource from
@@ -93,5 +85,5 @@ adds this once (or an agent writes it via a shell heredoc only after explicit ow
 
 ## Notes
 - **The human clicks once. That is the only manual step, ever.** If anyone is reaching for `curl`, a
-  pasted token, or an `auth.vatis.dev` URL, they're on the old broken path — stop and use `/mcp?repo=`.
+  pasted token, or an `auth.vatis.dev` URL, they're on the old broken path — stop and use the bare `/mcp`.
 - The magic-link token expires in 15 minutes and works once. Open the newest email if you clicked twice.

@@ -27,10 +27,10 @@ the bets — with zero enforcement risk. Arm the guard later, on a small slice, 
 ## 0. Prerequisites — connect, then create the plan yourself
 
 You connect in **one click** and create plans yourself (see the `vatis-setup` skill for wiring):
-- `.mcp.json` points at `https://api.vatis.dev/mcp?repo=<url-encoded git remote>` — so this repo gets its
-  own dedicated project (one repo, one project). On first use, Claude Code opens an OAuth flow; the human
-  clicks **one** magic-link to approve (a real page, not JSON). Vatis makes or finds this repo's project.
-  If you can see `mcp__vatis__create_plan` in your tools, you're a **planner** on it.
+- `.mcp.json` points at the bare `https://api.vatis.dev/mcp` — an org-scoped bootstrap. On first use,
+  Claude Code opens an OAuth flow; the human clicks **one** magic-link to approve (a real page, not JSON).
+  Then `list_projects`/`create_project({ name })` to pick or make this codebase's project, reconnect to
+  `…/mcp/project/<prj_id>`, and you're a **planner** on it (you see `mcp__vatis__create_plan`).
 - **Make the plan:** `mcp__vatis__create_plan({ goal })` → returns a `pl_…` id. This is your plan; you did
   not need a projectId, a pasted token, or any REST.
 - ⚠️ **On this connection every plan-operating tool takes a `planId` argument** — pass the id you just
@@ -133,6 +133,11 @@ it fully off: remove the hooks. There is no log-only mode — a refusal is a blo
 `release` (unfinished) — the clean exit. A lease left held auto-reclaims after **30 min** of silence (or a
 manager `revoke`s it sooner), but don't lean on that: it's a backstop, not a workflow.
 
+**Leases are SESSION-BOUND — a `checkpoint` does not survive a `/clear`.** The `leaseId` lives in your
+context and the guard binds the lease to your session id; a context clear loses both, so the *same* lease
+cannot be resumed even by the same agent label. After a clear, `claim` the node again (the lapsed lease
+reclaims cleanly). `checkpoint` records progress for the human — it is not a resumable-lease token.
+
 - `mcp__vatis__heartbeat(leaseId)` — proof you're still alive on a node during a long *silent* step (a slow
   build, a big test run, a deep think). Every ordinary verb (`settle`/`widen`/`discover`/`amend_intent`)
   already renews your lease, so while you're making progress you never need this; reach for it only when
@@ -184,3 +189,30 @@ finding to whoever reads that file next.
 question when something looks stuck is usually "why is X *not* on the frontier?" — read the frontier's
 derivation; it says. If a wall refuses you, the refusal text names the legal move. Follow it; don't route
 around it.
+
+## 5. Working within the walls — the gotchas that trip agents
+
+These are the walls agents most often fight. Each is deliberate; the move is to work *with* it, not around.
+
+- **Declare the verification that actually PROVES the node.** A node's `verification` is the command that,
+  run green, means it's done — and the command a break must show FAILING later. If correctness is
+  type-level (a schema, a signature, a nullability), declare a typecheck (`pnpm typecheck` / `tsc
+  --noEmit`), **not** `pnpm test` — a passing test over a type-only defect proves nothing, and you won't
+  be able to `discover`-break it with evidence when it's wrong. Declare the standard that can actually go
+  red.
+- **You can't silently fix a settled clause or an installed edge — and that's the point.** A settled
+  contract is a promise others built against; rewriting it under them is refused (`CONTRACT_CHANGE`). The
+  sanctioned correction is to `discover`-break the wrong clause/artifact with a failing run of *its own*
+  declared verification (or `split` your own node) — that withdraws it and lets it be re-settled/re-planned
+  cleanly, recalling only the reliers on that exact clause. A dependency you were mis-wired onto and can't
+  satisfy: file a `discover` finding saying so; the manager `absorb`s or re-points it. Don't try to
+  re-settle around the wall.
+- **Owed work that isn't a node must be a FINDING, not a buried clause.** If you close a slice but leave
+  real work undone that nobody owns yet, don't record it only inside a contract clause — it will vanish
+  from `frontier`. `discover` it as a finding so it surfaces in the manager's unheard inbox and can be
+  raised into work.
+- **External preconditions are yours to check — the frontier can't.** `frontier` tracks node-to-node
+  reliances only; it knows nothing about the world. So a node can read READY while being physically
+  unrunnable (a namespace that doesn't exist, an entitlement not enabled, an endpoint never built). State
+  any such precondition in the node's `intent`, and CHECK it before you `claim` — a green frontier is not
+  a promise the world is ready.

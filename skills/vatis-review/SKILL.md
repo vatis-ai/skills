@@ -52,7 +52,9 @@ the node(s) it covers and check the delivered work against the plan — not agai
   that the promise was kept.
 
 Then **`adjudicate(planId, nodeId, decision)`** — say what you decided and **why** (that becomes the node's
-evidence and releases whatever waited on it). If the work doesn't meet the bar, say so in the decision and
+evidence). It returns `reliancesSatisfied` (nodes whose reliance on this gate is now met) and `remaining`
+(what each still waits on) — dispatch a node only when its `stillWaitingOn` is empty, not just because it
+is listed. If the work doesn't meet the bar, say so in the decision and
 send it back (the executor re-does it, or `discover`s what's wrong) — do not approve to keep things moving.
 
 ## The two tiers — know what is NOT yours
