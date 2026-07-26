@@ -77,6 +77,21 @@ send it back (the executor re-does it, or `discover`s what's wrong) — do not a
 - **`absorb(planId, findingId, question, blocks)`** — this finding changes the plan: raise a decision node
   carrying it and block whatever must wait for that call.
 
+⚠️ **`absorb` raises a DECISION, never work.** The node carries `adjudicator: "human"` — its promise is
+*"a person will decide this"*, and no agent can clear it (`NOT_YOURS_TO_ADJUDICATE`), `unfold` included.
+It is how a **question** reaches a person; it is not how owed work becomes a node, and it is not how a
+broken plan gets repaired. Nothing on your surface installs nodes: the only thing that mints a re-planning
+node is `discover` with a break whose fallout is non-empty, and `discover` is an executor verb you don't
+have. When a finding says *the plan itself is wrong here* — a mis-wired reliance, a node that can never
+run — **dispatch an executor to `discover` it**, then a planner to `unfold` the fix. Absorbing it buries a
+mechanical repair behind a human gate that repairs nothing.
+
+**A re-planning node you didn't dispatch is not a bug.** When an attestation strands a relier — someone
+named a clause that node never published, so the reliance can now never be met — Vatis raises the repair
+itself and sorts it to the top of `ready`. Dispatch a planner to discharge it. Until it is, everything
+behind the stranded node stays blocked and `seed` refuses new milestones. An executor reporting `stranded`
+in its `attest` result did nothing wrong and has nothing to fix.
+
 ## Hard rules
 
 - You **never** write code, claim a node, settle, or attest. If you find yourself wanting to, dispatch an

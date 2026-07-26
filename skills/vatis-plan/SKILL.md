@@ -166,9 +166,11 @@ Also in `brief`: `readOwners` — nodes that own a file you `read` and have deci
 (settled a clause / reported a finding) that reaches you through no reliance edge. Go look before you build.
 
 Planner-only repair: `unfold` (install replacements + `retire` dead nodes), `bet`, `revoke`, `seed`. To
-**decompose a node that already settled a contract**, use `unfold(..., succeed:[{from, to}])` instead of
-`retire`: the heir `to` inherits the contract, reliers move to it, and `from` retires — so settling early
-never makes the repair harder. `frontier.answerable` flags a human gate an unheard finding already answers.
+**decompose a node that already settled a contract**, or to **re-point reliers off a node you're
+replacing**, use `unfold(..., succeed:[{from, to}])` instead of `retire`: the heir `to` inherits the
+contract, every reliance on `from` moves to it, and `from` retires — all at once. `retire` alone is refused
+while anyone still relies on the node (`RELIES_ON_RETIRED`), and `succeed` is the only thing in the system
+that repoints a reliance. `frontier.answerable` flags a human gate an unheard finding already answers.
 
 Human-only (not yours): adjudicating a `human` decision node, and absorbing/acknowledging findings —
 those happen on a separate human surface a signed-in person reaches, which your token cannot.
@@ -177,9 +179,11 @@ those happen on a separate human surface a signed-in person reaches, which your 
 `widen` to it — that's the normal case, including a spec in your `reads` your verification proved wrong.
 Only when the file is genuinely CONTENDED, or the work needs a whole **new node**, does it leave your
 hands: an executor cannot add a node (that's a planner's `unfold`, which needs a re-planning node you don't
-hold — do NOT `split` to manufacture one). For those, **`discover` it as a finding** with evidence; a human
-`absorb`s it and a planner installs the node. Attest what you own now; `brief`'s `readOwners` carries your
-finding to whoever reads that file next.
+hold — do NOT `split` to manufacture one). For those, **`discover` it as a finding** with evidence, and
+attest what you own now; `brief`'s `readOwners` carries your finding to whoever reads that file next. A
+human `acknowledge`s or `absorb`s it — but note what `absorb` does and doesn't do: it raises a **decision
+node for a person**, not a re-planning node. It is how a question reaches a human, not how a planner gets
+authority to install nodes. For that, see "where re-planning nodes come from" in §5.
 
 ---
 
@@ -189,6 +193,35 @@ finding to whoever reads that file next.
 question when something looks stuck is usually "why is X *not* on the frontier?" — read the frontier's
 derivation; it says. If a wall refuses you, the refusal text names the legal move. Follow it; don't route
 around it.
+
+**The one deadlock a plan can grow on its own: `UNPUBLISHABLE_CLAUSE`.** Node X contract-relies on Y for a
+clause Y never published — a typo, or a clause that actually belongs to a third node. This is *legal at
+seed* (the defect's guard is "Y is fulfilled"), and becomes a wedge the moment Y attests, having settled
+everything it ever meant to promise. Symptoms: `frontier` says X is waiting on a clause Y "NEVER
+PUBLISHED", Y can't be re-claimed (`FULFILLED`), X can't be claimed (`UNMET_RELIANCE`, so `split` is out),
+and `seed` refuses every later milestone for a defect that batch didn't introduce.
+
+Vatis now catches this at the attestation that creates it: `attest` returns `stranded` + `replan`, and the
+repair node is already on the frontier. **On a plan that predates that** — or if you meet one in the wild —
+the repair is the same, done by hand:
+
+1. `discover({ finding: "<why X can never run>", breaks: { kind: "artifact", node: X } })` — **with no
+   `evidence`**. The *only* thing that mints a re-planning node is a `discover` whose fallout is
+   non-empty, and an artifact break needs no citation when the graph already proves the node is dead.
+   Break **X**, not Y.
+2. `claim` the returned `unfold_f_…`, then `unfold(nodes: [X-v2 with the reliance pointed at the clause's
+   real owner], succeed: [{ from: X, to: X-v2 }])`.
+
+⚠️ **Do not go hunting for a failing run to cite.** The obvious move — run X's declared `verification`
+and cite the red — works only if that standard can actually go red, and on a wedged node it usually
+**passes**: nothing was ever built for it to fail on (`pnpm typecheck` over an empty scaffold exits 0).
+Citing a pass is refused (`EVIDENCE_NOT_A_FAILURE`), X can't be claimed so `split` is out, and that is
+every door shut on a node that is provably dead. That dead end is precisely why the no-citation
+exemption exists. Omit `evidence`.
+
+`succeed` is not optional: `retire` alone is refused (`RELIES_ON_RETIRED`) because everything behind X is
+still pointing at it. `succeed` repoints them onto the heir first, then retires the corpse — and a retired
+node is skipped by the structural walls entirely, so the plan is seedable again.
 
 ## 5. Working within the walls — the gotchas that trip agents
 
@@ -204,9 +237,28 @@ These are the walls agents most often fight. Each is deliberate; the move is to 
   contract is a promise others built against; rewriting it under them is refused (`CONTRACT_CHANGE`). The
   sanctioned correction is to `discover`-break the wrong clause/artifact with a failing run of *its own*
   declared verification (or `split` your own node) — that withdraws it and lets it be re-settled/re-planned
-  cleanly, recalling only the reliers on that exact clause. A dependency you were mis-wired onto and can't
-  satisfy: file a `discover` finding saying so; the manager `absorb`s or re-points it. Don't try to
-  re-settle around the wall.
+  cleanly, recalling only the reliers on that exact clause. **A dependency you were mis-wired onto and
+  can't satisfy** is the `UNPUBLISHABLE_CLAUSE` case in §4: break the wedged node's artifact (no citation
+  needed — the graph is the proof) to raise a re-planning node, then a planner `unfold`s a replacement
+  with `succeed:`. There is no verb that re-points a reliance in place, and `absorb` will not give you
+  one. Don't try to re-settle around the wall.
+- **Two artifact breaks need no citation, and neither is a loophole.** Your OWN node under your own lease
+  (that's `split`), and a node the GRAPH already proves can never run — relying on a clause that can never
+  be published, on a retired node, or on one not in the plan. In the second case the server re-derives the
+  claim itself, so there is nothing for you to cite. Everything else still needs a failing run of the
+  standard that node declared.
+- **Where re-planning nodes come from — the question that has exactly one answer.** Only `discover` with a
+  break whose fallout is non-empty mints one (`split` and `checkpoint` are `discover` underneath; the
+  system also raises one at `attest` when an attestation strands a relier). `absorb` mints the *other*
+  kind — a decision node with `adjudicator: "human"`, which `unfold` refuses (`NOT_YOURS_TO_ADJUDICATE`)
+  because what it promises is a judgement, cleared by a person. **Nothing else mints either**, and you
+  cannot author `unfolds` at `seed`. If you're hunting for a route to a re-planning node, it is the
+  `discover` break or nothing — and if you find yourself reaching for `absorb`, you are about to raise a
+  bar only a human can clear and then be refused at it.
+- **`attest` returns `stranded` — read it.** Normally empty. When it isn't, your attestation just made
+  someone else's reliance unmeetable (they named a clause you never published, and you can't be claimed
+  again to publish it). You did nothing wrong and there's nothing for you to fix; the system has already
+  raised the repair node named in `replan`. Hand it to a planner, or claim it if you are one.
 - **Owed work that isn't a node must be a FINDING, not a buried clause.** If you close a slice but leave
   real work undone that nobody owns yet, don't record it only inside a contract clause — it will vanish
   from `frontier`. `discover` it as a finding so it surfaces in the manager's unheard inbox and can be
