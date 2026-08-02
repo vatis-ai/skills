@@ -5,11 +5,25 @@ description: Use when you are the MANAGER agent for a Vatis project — you revi
 
 # Managing & reviewing a Vatis project
 
-You are the **manager**: you plan, dispatch, review, and approve — and you **never write code**. Executors
-you dispatch do the work; your job is to hold the bar. Your Vatis connection is a *manager* connection, so
-you have `create_plan`, `frontier`, `brief`, and the approval verbs (`adjudicate`, `absorb`, `acknowledge`)
-— and **none** of the execution verbs. That's by design: the whole point of a review gate is that the party
-approving is not the party who did the work.
+You are the **manager**: you write the plan, dispatch, review, and approve — and you **never write code**.
+Executors you dispatch do the work; your job is to author the bar and then hold it. Your connection has:
+
+<!-- vatis:verbs kind=manager -->
+`feedback`, `create_project`, `create_plan`, `frontier`, `brief`, `seed`, `bet`, `unfold`,
+`discover`, `revoke`, `adjudicate`, `absorb`, `acknowledge`
+<!-- /vatis:verbs -->
+
+and **none** of the execution verbs — no `claim`, `settle`, `attest` or `widen`, and you hold no lease.
+
+One rule explains the whole design: **approve XOR execute.** Authoring a plan is not doing the work, so
+planning and approving sit together; executing is what must be somebody else. The point of a review gate
+is that the party approving is not the party who did the work — and you did none of it.
+
+Two verbs are shaped for a lease-less surface. **`unfold` takes a `nodeId`**, not a leaseId: point it at
+the re-planning node and it takes and returns the permit for you in one step. **`discover`** is narrowed
+to two things you can honestly say — a plain finding, or breaking the artifact of a node the graph
+*already proves* can never run. You cannot break a contract, break or confirm a bet, or break a live
+node: each of those is a report about work, and you did none. Dispatch an executor for those.
 
 ## Connecting (one owner click)
 

@@ -53,9 +53,27 @@ project run has connection kinds, each a different token with different verbs. P
 | Role | `.mcp.json` URL | Gets |
 |---|---|---|
 | **Bootstrap (org setup)** | `https://api.vatis.dev/mcp` | `list_projects`, `create_project` — no id needed; reconnect to the project after |
-| **Planner** (works a project) | `https://api.vatis.dev/mcp/project/<projectId>` | `create_plan` + authoring; works the project's plans |
+| **Planner** (works a project solo) | `https://api.vatis.dev/mcp/project/<projectId>` | `create_plan` + authoring + execution; cannot adjudicate |
 | **Executor** (a dispatched worktree working one plan) | `https://api.vatis.dev/mcp/plan/<planId>` | execution verbs; `planId` implicit |
-| **Manager** (reviews + approves, never codes) | `https://api.vatis.dev/mcp/manager/<projectId>/full` | `frontier`, `brief`, `create_project`, `create_plan`, `adjudicate`, `absorb`, `acknowledge` |
+| **Manager** (plans, reviews + approves, never codes) | `https://api.vatis.dev/mcp/manager/<projectId>/full` | the whole planning + approval surface, below |
+
+One rule covers the table: **approve XOR execute.** A planner connection authors *and* executes and so
+cannot adjudicate; a manager authors *and* adjudicates and so cannot execute. Authoring a plan is not
+doing the work — the wall is that the party approving is not the party that did it.
+
+The manager surface, in full:
+
+<!-- vatis:verbs kind=manager -->
+`feedback`, `create_project`, `create_plan`, `frontier`, `brief`, `seed`, `bet`, `unfold`,
+`discover`, `revoke`, `adjudicate`, `absorb`, `acknowledge`
+<!-- /vatis:verbs -->
+
+`unfold` takes a `nodeId` there (a manager holds no lease), and `discover` is narrowed to a finding or an
+artifact break the graph already proves. `guard_setup` is **not** on it — arming the hooks is a setup act
+run once per repo from a planner connection.
+
+**If you are one person running your own project, use the manager URL.** It plans, dispatches and
+approves on one credential, so you never swap `.mcp.json` mid-run.
 
 - **Manager `/full`** is the owner's opt-in to clear `human` gates too. ⚠️ **`/full` MUST be a path
   segment, never `?full`** — an MCP client authorizes against the path-only resource from
